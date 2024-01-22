@@ -6,17 +6,6 @@ from functools import partial
 from typing import Tuple
 from stencilnet.model import batched_forward, Params_List
 
-JIT = True
-
-
-def conditional_decorator(func: callable, cond: bool) -> callable:
-    """
-    Return either func or trivial wrapper depending on cond
-    """
-    if cond:
-        return func
-    return lambda f: f
-
 
 def get_inner_shape(
     arr_shape: Tuple[int, int], kernel_shape: Tuple[int, int]
@@ -35,7 +24,7 @@ def get_inner_shape(
     return ni_inner, nj_inner
 
 
-@conditional_decorator(partial(jit, static_argnums=(2,)), JIT)
+@partial(jit, static_argnums=(2,))
 def update_from_window(
     i: int, j: int, kernel_shape: Tuple[int, int], val: Tuple[jnp.ndarray, jnp.ndarray]
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -59,7 +48,7 @@ def update_from_window(
     return arr, arrsh
 
 
-@conditional_decorator(partial(jit, static_argnums=(1,)), JIT)
+@partial(jit, static_argnums=(1,))
 def reshape_kernel_neighbors(
     arr: jnp.ndarray, kernel_shape: Tuple[int, int]
 ) -> jnp.ndarray:
@@ -85,7 +74,7 @@ def reshape_kernel_neighbors(
     return out
 
 
-@conditional_decorator(partial(jit, static_argnums=(2,)), JIT)
+@partial(jit, static_argnums=(2,))
 def apply_mlp_to_kernels(
     params: Params_List, arr: jnp.ndarray, kernel_shape=Tuple[int, int]
 ) -> jnp.ndarray:

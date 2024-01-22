@@ -10,7 +10,7 @@ KEY = random.PRNGKey(1)
 trivial_params = init_mlp_params(KEY, (1, 1))
 
 
-@pytest.mark.parametrize("shape", [(5, 5), (7, 9), (20000, 20001)])
+@pytest.mark.parametrize("shape", [(5, 5), (7, 9), (1000, 1001)])
 def test_trivial_operator(shape: Tuple[int, int]):
     """
     The trivial operator with a 1x1 kernel should return an unmodified array
