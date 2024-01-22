@@ -2,10 +2,20 @@ from jax import jit
 import jax.lax as lax
 import jax.numpy as jnp
 import numpy as onp
+from functools import partial
 from typing import Tuple
 from stencilnet.model import batched_forward, Params_List
 
 JIT = True
+
+
+def conditional_decorator(func: callable, cond: bool) -> callable:
+    """
+    Return either func or trivial wrapper depending on cond
+    """
+    if cond:
+        return func
+    return lambda f: f
 
 
 def get_inner_shape(
@@ -25,10 +35,7 @@ def get_inner_shape(
     return ni_inner, nj_inner
 
 
-jit_dec_third = (lambda f: jit(f, static_argnums=(2))) if JIT else lambda f: f
-
-
-@jit_dec_third
+@conditional_decorator(partial(jit, static_argnums=(2,)), JIT)
 def update_from_window(
     i: int, j: int, kernel_shape: Tuple[int, int], val: Tuple[jnp.ndarray, jnp.ndarray]
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -52,10 +59,7 @@ def update_from_window(
     return arr, arrsh
 
 
-jit_dec_second = (lambda f: jit(f, static_argnums=(1,))) if JIT else lambda f: f
-
-
-@jit_dec_second
+@conditional_decorator(partial(jit, static_argnums=(1,)), JIT)
 def reshape_kernel_neighbors(
     arr: jnp.ndarray, kernel_shape: Tuple[int, int]
 ) -> jnp.ndarray:
@@ -77,19 +81,23 @@ def reshape_kernel_neighbors(
         lambda i, v: update_from_window(i=i, j=j, kernel_shape=kernel_shape, val=v),
         val,
     )
-    # _, out = lax.fori_loop(0, nj_inner, col_func, (arr, out))
-    val = arr, out
-    for i in range(ni_inner):
-        for j in range(nj_inner):
-            val = update_from_window(i, j, kernel_shape, val)
-    _, out = val
+    _, out = lax.fori_loop(0, nj_inner, col_func, (arr, out))
     return out
 
 
-@jit_dec_third
+@conditional_decorator(partial(jit, static_argnums=(2,)), JIT)
 def apply_mlp_to_kernels(
     params: Params_List, arr: jnp.ndarray, kernel_shape=Tuple[int, int]
 ) -> jnp.ndarray:
+    """
+    args:
+        params
+        arr             batch of inputs
+        kernel_shape    rows, cols
+    returns:
+        out             interior array with MLP defined by params applied to a kernel
+                        with kernel_shape
+    """
     reshaped_arr = reshape_kernel_neighbors(arr, kernel_shape)
     out = batched_forward(params, reshaped_arr)
     out = out.reshape(get_inner_shape(arr.shape, kernel_shape))

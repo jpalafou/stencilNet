@@ -2,6 +2,7 @@ from jax import dtypes, jit, vmap
 import jax.nn as jnn
 import jax.numpy as jnp
 import jax.random as random
+from functools import partial
 from typing import TypeAlias, List, Tuple
 
 Params_List: TypeAlias = List[Tuple[jnp.ndarray, jnp.ndarray]]
@@ -54,10 +55,7 @@ def forward(params: Params_List, input: jnp.ndarray) -> jnp.ndarray:
     return out
 
 
-vmap_dec = lambda f: vmap(f, in_axes=(None, 0))
-
-
-@vmap_dec
+@partial(vmap, in_axes=(None, 0))
 def batched_forward(params: Params_List, inputs: jnp.ndarray) -> jnp.ndarray:
     """
     args:
