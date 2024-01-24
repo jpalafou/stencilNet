@@ -45,7 +45,7 @@ def ssprk3_step(f: callable, u: jnp.ndarray, dt: float) -> jnp.ndarray:
     u1 = u
     u2 = u1 + dt * f(u1)
     u3 = (3 / 4) * u1 + (1 / 4) * (u2 + dt * f(u2))
-    return (1 / 3) * u1 + (2 / 3) * (u2 + dt * f(u2))
+    return (1 / 3) * u1 + (2 / 3) * (u3 + dt * f(u3))
 
 
 @partial(jit, static_argnums=(0,))

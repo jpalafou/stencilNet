@@ -43,7 +43,7 @@ def u0(x: jnp.ndarray, y: jnp.ndarray, type: str) -> jnp.ndarray:
         array with same shape as x and y
     """
     if type == "sinus":
-        return jnp.sine(2 * jnp.ip * (x + y))
+        return jnp.sin(2 * jnp.pi * (x + y))
     elif type == "square":
         inside_square = jnp.logical_and(x > 0.25, x < 0.75)
         inside_square = jnp.logical_and(inside_square, y > 0.25)
