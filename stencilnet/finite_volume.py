@@ -54,7 +54,7 @@ def u0(x: jnp.ndarray, y: jnp.ndarray, type: str) -> jnp.ndarray:
 @partial(jit, static_argnums=(1, 2, 3, 4))
 def apply_bc(
     arr: jnp.ndarray,
-    size: int,
+    size: Tuple[int, int],
     method: str = "periodic",
     expand: bool = False,
     inv: bool = False,
@@ -62,7 +62,7 @@ def apply_bc(
     """
     args:
         arr         2D array
-        size        width of boundary region around inner array
+        size        width of boundary region (axis 0, axis 1)
         method      "periodic", others not implemented
         expand      if arr doesn't already have boundaries included in its shape
         inv         return inner array
@@ -100,7 +100,7 @@ def apply_1d_stencil(arr: jnp.ndarray, stencil: jnp.ndarray, axis: int) -> jnp.n
         axis        axis the 1D stencil is applied along
     returns:
         out         arr convolved with a (n, 1) or (1, n) stencil
-                    removes n // 2 cells along axis
+                    removes 2 * n // 2 cells along axis
     """
     kernel_shape = [1, 1]
     kernel_shape[axis] = len(stencil)
@@ -126,17 +126,15 @@ def transverse_interpolation(
     stencils = get_conservative_LCR(p)
     interp_line_axis0 = apply_1d_stencil(u, jnp.array(stencils["center"]), axis=0)  # -
     interp_line_axis1 = apply_1d_stencil(u, jnp.array(stencils["center"]), axis=1)  # |
-    interpolated_midpoints = (
-        (
-            apply_1d_stencil(interp_line_axis1, jnp.array(stencils["left"]), axis=0),
-            apply_1d_stencil(interp_line_axis1, jnp.array(stencils["right"]), axis=0),
-        ),
-        (
-            apply_1d_stencil(interp_line_axis0, jnp.array(stencils["left"]), axis=1),
-            apply_1d_stencil(interp_line_axis0, jnp.array(stencils["right"]), axis=1),
-        ),
+    lower_upper_midpoints = (
+        apply_1d_stencil(interp_line_axis1, jnp.array(stencils["left"]), axis=0),
+        apply_1d_stencil(interp_line_axis1, jnp.array(stencils["right"]), axis=0),
     )
-    #   _._     ___
+    left_right_midpoints = (
+        apply_1d_stencil(interp_line_axis0, jnp.array(stencils["left"]), axis=1),
+        apply_1d_stencil(interp_line_axis0, jnp.array(stencils["right"]), axis=1),
+    )
+    interpolated_midpoints = lower_upper_midpoints, left_right_midpoints
     #  / | \   /   \
     #  | | |   .___.
     #  | | |   |   |
@@ -195,16 +193,16 @@ def compute_fluxes_from_padded_u(
     returns:
         fluxes_x, fluxes_y
     """
-    points = transverse_interpolation(u, p)
+    lower_upper, left_right = transverse_interpolation(u, p)
     # - 2 * ((p + 1) // 2) from both axes
     excess_slices = slice(excess[0] or None, -excess[0] or None), slice(
         excess[1] or None, -excess[1] or None
     )
     x_interface_flux_points = riemann_solver(
-        points[1][1][:, :-1], points[1][0][:, 1:], v[0]
+        left_right[1][:, :-1], left_right[0][:, 1:], v[0]
     )
     y_interface_flux_points = riemann_solver(
-        points[0][1][:-1, :], points[0][0][1:, :], v[1]
+        lower_upper[1][:-1, :], lower_upper[0][1:, :], v[1]
     )
     # (_, - 1), (- 1, _)
     # trim excess
@@ -283,6 +281,7 @@ def dynamics(
                             theta * high_order_fluxes + (1 - theta) * low_order_fluxes
     """
     fluxes_x, fluxes_y = get_fluxes(u=u, v=v, p=p)
-    dudx = (1 / h[0]) * (fluxes_x[:, 1:] - fluxes_x[:, :-1])
-    dudy = (1 / h[1]) * (fluxes_y[1:, :] - fluxes_y[:-1, :])
-    return -v[0] * dudx + -v[1] * dudy
+    dudt = -(1 / h[0]) * (fluxes_x[:, 1:] - fluxes_x[:, :-1]) + -(1 / h[1]) * (
+        fluxes_y[1:, :] - fluxes_y[:-1, :]
+    )
+    return dudt
