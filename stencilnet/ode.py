@@ -3,8 +3,6 @@ import jax.lax as lax
 import jax.numpy as jnp
 from functools import partial
 
-JIT = True
-
 
 @partial(jit, static_argnums=(0,))
 def euler_step(f: callable, u: jnp.ndarray, dt: float) -> jnp.ndarray:
@@ -17,6 +15,37 @@ def euler_step(f: callable, u: jnp.ndarray, dt: float) -> jnp.ndarray:
         euler evolution of system at t + dt
     """
     return u + dt * f(u)
+
+
+@partial(jit, static_argnums=(0,))
+def ssprk2_step(f: callable, u: jnp.ndarray, dt: float) -> jnp.ndarray:
+    """
+    args:
+        f(u)    system dynamics
+        u       state at time t
+        dt      time step
+    returns:
+        ssprk2 evolution of system at t + dt
+    """
+    u1 = u
+    u2 = u1 + dt * f(u1)
+    return (1 / 2) * u1 + (1 / 2) * (u2 + dt * f(u2))
+
+
+@partial(jit, static_argnums=(0,))
+def ssprk3_step(f: callable, u: jnp.ndarray, dt: float) -> jnp.ndarray:
+    """
+    args:
+        f(u)    system dynamics
+        u       state at time t
+        dt      time step
+    returns:
+        ssprk3 evolution of system at t + dt
+    """
+    u1 = u
+    u2 = u1 + dt * f(u1)
+    u3 = (3 / 4) * u1 + (1 / 4) * (u2 + dt * f(u2))
+    return (1 / 3) * u1 + (2 / 3) * (u2 + dt * f(u2))
 
 
 @partial(jit, static_argnums=(0,))
