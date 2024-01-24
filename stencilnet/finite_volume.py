@@ -7,6 +7,32 @@ from stencilnet.kernel import reshape_kernel_neighbors, get_inner_shape
 from stencilnet.stencils import get_conservative_LCR, get_transverse_integral
 
 
+@partial(jit, static_argnums=(0, 1, 2))
+def generate_rectilinear_mesh(
+    x_lims: Tuple[float, float],
+    y_lims: Tuple[float, float],
+    n_cells: Tuple[int, int],
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """
+    args:
+        x_lims      (lower, upper)
+        y_lims      (lower, upper)
+        n_cells     (n_x, n_y) or n_both
+    returns:
+        x, y        2D mesh
+    """
+    if isinstance(n_cells, tuple):
+        n_cells_tuple = n_cells
+    elif isinstance(n_cells, int):
+        n_cells_tuple = (n_cells, n_cells)
+    x_interfaces = jnp.linspace(x_lims[0], x_lims[1], n_cells_tuple[0] + 1)
+    y_interfaces = jnp.linspace(y_lims[0], y_lims[1], n_cells_tuple[1] + 1)
+    x_cell_centers = 0.5 * (x_interfaces[1:] + x_interfaces[:-1])
+    y_cell_centers = 0.5 * (y_interfaces[1:] + y_interfaces[:-1])
+    x, y = jnp.meshgrid(x_cell_centers, y_cell_centers)
+    return x, y
+
+
 @partial(jit, static_argnums=(2,))
 def u0(x: jnp.ndarray, y: jnp.ndarray, type: str) -> jnp.ndarray:
     """
