@@ -7,6 +7,24 @@ from stencilnet.kernel import reshape_kernel_neighbors, get_inner_shape
 from stencilnet.stencils import get_conservative_LCR, get_transverse_integral
 
 
+@partial(jit, static_argnums=(2,))
+def u0(x: jnp.ndarray, y: jnp.ndarray, type: str) -> jnp.ndarray:
+    """
+    args:
+        x, y    2D mesh
+        type    "sinus", "square"
+    returns:
+        array with same shape as x and y
+    """
+    if type == "sinus":
+        return jnp.sine(2 * jnp.ip * (x + y))
+    elif type == "square":
+        inside_square = jnp.logical_and(x > 0.25, x < 0.75)
+        inside_square = jnp.logical_and(inside_square, y > 0.25)
+        inside_square = jnp.logical_and(inside_square, y < 0.75)
+        return jnp.where(inside_square, 1.0, 0.0)
+
+
 @partial(jit, static_argnums=(1, 2, 3, 4))
 def apply_bc(
     arr: jnp.ndarray,
