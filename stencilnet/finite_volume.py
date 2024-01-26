@@ -264,31 +264,51 @@ def get_fluxes(
     return fluxes_x, fluxes_y
 
 
-@partial(jit, static_argnums=(2,))
+@jit
+def compute_theta(u: jnp.ndarray, params) -> jnp.ndarray:
+    """
+    args:
+        u       2D array of cell volume averages
+        params
+    returns:
+        theta_x, theta_y    flux limiting values at interfaces
+    """
+    theta = (
+        jnp.zeros(onp.array(u.shape, dtype=int) + onp.array([2, 2], dtype=int)) + params
+    )
+    theta_x = jnp.maximum(theta[1:-1, 1:], theta[1:-1, :-1])
+    theta_y = jnp.maximum(theta[1:, 1:-1], theta[:-1, 1:-1])
+    return theta_x, theta_y
+
+
+@partial(jit, static_argnums=(2, 4))
 def dynamics(
     u: jnp.ndarray,
     v: Tuple[jnp.ndarray, jnp.ndarray],
     p: int,
     h: [float, float],
+    theta_limiting_params=None,
 ) -> jnp.ndarray:
     """
     args:
-        u                   cell volume averages, no boundaries
-        v                   (vx, vy) defined at their normal cell interfaces
-        p                   degree of interpolating polynomial
-        h                   cell side lengths (x, y)
-        TODO
-        blending_func(u)    computes theta for blended high order and low order fluxes
-                            theta * high_order_fluxes + (1 - theta) * low_order_fluxes
+        u                       cell volume averages, no boundaries
+        v                       (vx, vy) defined at their normal cell interfaces
+        p                       degree of interpolating polynomial
+        h                       cell side lengths (x, y)
+        theta_limiting_params   no slope limiting if None
     """
     fluxes_x, fluxes_y = get_fluxes(u=u, v=v, p=p)
+    if theta_limiting_params is not None:
+        low_order_fluxes_x, low_order_fluxes_y = get_fluxes(u=u, v=v, p=0)
+        theta_x, theta_y = compute_theta(u=u, params=theta_limiting_params)
+        fluxes_x = (1 - theta_x) * fluxes_x + theta_x * low_order_fluxes_x
+        fluxes_y = (1 - theta_y) * fluxes_y + theta_y * low_order_fluxes_y
     dudt = -(1 / h[0]) * (fluxes_x[:, 1:] - fluxes_x[:, :-1]) + -(1 / h[1]) * (
         fluxes_y[1:, :] - fluxes_y[:-1, :]
     )
     return dudt
 
 
-@jit
 def get_dt_from_cfl(cfl: float, h: Tuple[float, float], v: Tuple[float, float]):
     """
     args:
@@ -298,11 +318,11 @@ def get_dt_from_cfl(cfl: float, h: Tuple[float, float], v: Tuple[float, float]):
     returns:
         dt      time step size
     """
-    dt = cfl / (abs(v[0]) / h[0] + abs(v[1]) / h[1])
+    dt = cfl / (onp.abs(v[0]) / h[0] + onp.abs(v[1] / h[1]))
     return dt
 
 
-# @partial(jit, static_argnums=(3, 4, 5, 6))
+@partial(jit, static_argnums=(1, 2, 3, 4, 5, 6, 7))
 def advection_solver(
     u_init: jnp.ndarray,
     h: Tuple[float, float],
@@ -311,6 +331,7 @@ def advection_solver(
     cfl: float,
     p: int,
     forward: str,
+    theta_limiting_params=None,
 ):
     """
     solve the IVP: du/dt = d(v_x * u)/dx + d(v_y * u)/dy
@@ -323,6 +344,7 @@ def advection_solver(
         cfl             maximum allowable Courant-Friedrichs-Lewy condition
         p               degree of interpolating polynomial
         forward         "euler", "ssprk2", "ssprk3", "rk4"
+        theta_limiting_params   no slope limiting if None
     returns:
         history of states at each time step (n_steps, u.shape)
     """
@@ -337,7 +359,9 @@ def advection_solver(
     step_count = int(onp.ceil(T / dt))
     # integrate
     U = ode.integrator(
-        f=lambda u: dynamics(u, v=v, p=p, h=h),
+        f=lambda u: dynamics(
+            u=u, v=v, p=p, h=h, theta_limiting_params=theta_limiting_params
+        ),
         step=step_options[forward],
         u_init=u_init,
         T=T,
