@@ -68,20 +68,21 @@ def rk4_step(f: callable, u: jnp.ndarray, dt: float) -> jnp.ndarray:
 
 @partial(jit, static_argnums=(0, 1, 3, 4))
 def integrator(
-    f: callable, step: callable, u_init: jnp.ndarray, n_steps: int, T: float
+    f: callable, step: callable, u_init: jnp.ndarray, T: float, step_count: int
 ) -> jnp.ndarray:
     """
     args:
         f(u)            system dynamics
         step(f, u, dt)  explicit integration method
         u_init          state at time 0
-        n_steps         number of time steps
-        T               solving time
+        T               integration stop time
+        step_count      number of iterations after the initial condition
     returns:
-        history of states at each time step (n_steps, u.shape)
+        history of states at each time step (n_steps + 1, u.shape)
     """
-    t = jnp.linspace(0, T, n_steps)
-    U = jnp.zeros((n_steps,) + u_init.shape) + jnp.nan
+    n_discrete_times = step_count + 1
+    t = jnp.linspace(0, T, n_discrete_times)
+    U = jnp.zeros((n_discrete_times,) + u_init.shape) + jnp.nan
     U = U.at[0, ...].set(u_init)
 
     def fori_loop_helper(i, U):
@@ -91,5 +92,5 @@ def integrator(
         U = U.at[i, ...].set(u)
         return U
 
-    U = lax.fori_loop(1, n_steps, fori_loop_helper, U)
+    U = lax.fori_loop(1, n_discrete_times, fori_loop_helper, U)
     return U

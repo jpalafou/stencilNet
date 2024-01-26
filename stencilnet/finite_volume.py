@@ -5,6 +5,7 @@ from functools import partial
 from typing import Tuple
 from stencilnet.kernel import reshape_kernel_neighbors, get_inner_shape
 from stencilnet.stencils import get_conservative_LCR, get_transverse_integral
+import stencilnet.ode as ode
 
 
 @partial(jit, static_argnums=(0, 1, 2))
@@ -272,8 +273,8 @@ def dynamics(
 ) -> jnp.ndarray:
     """
     args:
-        u                   cell volume averages, no boundaries, (m, n)
-        v                   (vx, vy), array or float (((m, n + 1)), (m + 1, n))
+        u                   cell volume averages, no boundaries
+        v                   (vx, vy) defined at their normal cell interfaces
         p                   degree of interpolating polynomial
         h                   cell side lengths (x, y)
         TODO
@@ -285,3 +286,61 @@ def dynamics(
         fluxes_y[1:, :] - fluxes_y[:-1, :]
     )
     return dudt
+
+
+@jit
+def get_dt_from_cfl(cfl: float, h: Tuple[float, float], v: Tuple[float, float]):
+    """
+    args:
+        cfl     Courant-Friedrichs-Lewy condition
+        h       cell side lengths (x, y)
+        v       (vx, vy) 2D array or float
+    returns:
+        dt      time step size
+    """
+    dt = cfl / (abs(v[0]) / h[0] + abs(v[1]) / h[1])
+    return dt
+
+
+# @partial(jit, static_argnums=(3, 4, 5, 6))
+def advection_solver(
+    u_init: jnp.ndarray,
+    h: Tuple[float, float],
+    v: Tuple[float, float],
+    T: float,
+    cfl: float,
+    p: int,
+    forward: str,
+):
+    """
+    solve the IVP: du/dt = d(v_x * u)/dx + d(v_y * u)/dy
+    args:
+        step(f, u, dt)  explicit integration method
+        u_init          state at time 0
+        h               cell side lengths (x, y)
+        v               (vx, vy) defined at their normal cell interfaces
+        T               solving time
+        cfl             maximum allowable Courant-Friedrichs-Lewy condition
+        p               degree of interpolating polynomial
+        forward         "euler", "ssprk2", "ssprk3", "rk4"
+    returns:
+        history of states at each time step (n_steps, u.shape)
+    """
+    step_options = {
+        "euler": ode.euler_step,
+        "ssprk2": ode.ssprk2_step,
+        "ssprk3": ode.ssprk3_step,
+        "rk4": ode.rk4_step,
+    }
+    # compute number of steps
+    dt = get_dt_from_cfl(cfl, h, v)
+    step_count = int(onp.ceil(T / dt))
+    # integrate
+    U = ode.integrator(
+        f=lambda u: dynamics(u, v=v, p=p, h=h),
+        step=step_options[forward],
+        u_init=u_init,
+        T=T,
+        step_count=step_count,
+    )
+    return U
