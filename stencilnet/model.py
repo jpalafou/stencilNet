@@ -49,7 +49,7 @@ def forward(params: Params_List, input: jnp.ndarray) -> jnp.ndarray:
     out = input
     for w, b in params[:-1]:
         out = jnp.dot(w, out) + b
-        out = jnn.relu(out)
+        out = jnn.tanh(out)
     w, b = params[-1]
     out = jnp.dot(w, out) + b
     return out

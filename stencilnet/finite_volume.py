@@ -1,4 +1,5 @@
 from jax import jit
+import jax.nn as jnn
 import jax.numpy as jnp
 import numpy as onp
 from functools import partial
@@ -278,10 +279,12 @@ def compute_theta(u: jnp.ndarray, params) -> jnp.ndarray:
     returns:
         theta_x, theta_y    flux limiting values at interfaces
     """
-    kernel_side_length = int(onp.sqrt(params[0][0].shape[1])) // 2
-    kernel_shape = (2 * kernel_side_length + 1, 2 * kernel_side_length + 1)
-    theta = apply_mlp_to_kernels(
-        params, apply_bc(u, kernel_side_length + 1, expand=True), kernel_shape
+    kernel_side_length = int(onp.sqrt(params[0][0].shape[1]))
+    kernel_shape = (kernel_side_length, kernel_side_length)
+    theta = jnn.sigmoid(
+        apply_mlp_to_kernels(
+            params, apply_bc(u, kernel_side_length // 2 + 1, expand=True), kernel_shape
+        )
     )
     theta_x = jnp.maximum(theta[1:-1, 1:], theta[1:-1, :-1])
     theta_y = jnp.maximum(theta[1:, 1:-1], theta[:-1, 1:-1])
@@ -331,7 +334,7 @@ def get_dt_from_cfl(cfl: float, h: Tuple[float, float], v: Tuple[float, float]):
     return dt
 
 
-@partial(jit, static_argnums=(1, 2, 3, 4, 5, 6))
+@partial(jit, static_argnums=(1, 2, 3, 4, 5, 6, 7))
 def advection_solver(
     u_init: jnp.ndarray,
     h: Tuple[float, float],
