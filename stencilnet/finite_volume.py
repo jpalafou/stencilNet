@@ -3,8 +3,13 @@ import jax.numpy as jnp
 import numpy as onp
 from functools import partial
 from typing import Tuple
-from stencilnet.kernel import reshape_kernel_neighbors, get_inner_shape
+from stencilnet.kernel import (
+    apply_mlp_to_kernels,
+    reshape_kernel_neighbors,
+    get_inner_shape,
+)
 from stencilnet.stencils import get_conservative_LCR, get_transverse_integral
+from stencilnet.model import batched_forward
 import stencilnet.ode as ode
 
 
@@ -273,8 +278,10 @@ def compute_theta(u: jnp.ndarray, params) -> jnp.ndarray:
     returns:
         theta_x, theta_y    flux limiting values at interfaces
     """
-    theta = (
-        jnp.zeros(onp.array(u.shape, dtype=int) + onp.array([2, 2], dtype=int)) + params
+    kernel_side_length = int(onp.sqrt(params[0][0].shape[1])) // 2
+    kernel_shape = (2 * kernel_side_length + 1, 2 * kernel_side_length + 1)
+    theta = apply_mlp_to_kernels(
+        params, apply_bc(u, kernel_side_length + 1, expand=True), kernel_shape
     )
     theta_x = jnp.maximum(theta[1:-1, 1:], theta[1:-1, :-1])
     theta_y = jnp.maximum(theta[1:, 1:-1], theta[:-1, 1:-1])
@@ -287,6 +294,7 @@ def dynamics(
     v: Tuple[jnp.ndarray, jnp.ndarray],
     p: int,
     h: [float, float],
+    limit_slopes: bool = False,
     theta_limiting_params=None,
 ) -> jnp.ndarray:
     """
@@ -295,10 +303,11 @@ def dynamics(
         v                       (vx, vy) defined at their normal cell interfaces
         p                       degree of interpolating polynomial
         h                       cell side lengths (x, y)
+        limit_slopes            if False, theta_limiting_params is unused
         theta_limiting_params   no slope limiting if None
     """
     fluxes_x, fluxes_y = get_fluxes(u=u, v=v, p=p)
-    if theta_limiting_params is not None:
+    if limit_slopes:
         low_order_fluxes_x, low_order_fluxes_y = get_fluxes(u=u, v=v, p=0)
         theta_x, theta_y = compute_theta(u=u, params=theta_limiting_params)
         fluxes_x = (1 - theta_x) * fluxes_x + theta_x * low_order_fluxes_x
@@ -322,7 +331,7 @@ def get_dt_from_cfl(cfl: float, h: Tuple[float, float], v: Tuple[float, float]):
     return dt
 
 
-@partial(jit, static_argnums=(1, 2, 3, 4, 5, 6, 7))
+@partial(jit, static_argnums=(1, 2, 3, 4, 5, 6))
 def advection_solver(
     u_init: jnp.ndarray,
     h: Tuple[float, float],
@@ -331,6 +340,7 @@ def advection_solver(
     cfl: float,
     p: int,
     forward: str,
+    limit_slopes: bool = False,
     theta_limiting_params=None,
 ):
     """
@@ -344,6 +354,7 @@ def advection_solver(
         cfl             maximum allowable Courant-Friedrichs-Lewy condition
         p               degree of interpolating polynomial
         forward         "euler", "ssprk2", "ssprk3", "rk4"
+        limit_slopes            if False, theta_limiting_params is unused
         theta_limiting_params   no slope limiting if None
     returns:
         history of states at each time step (n_steps, u.shape)
@@ -360,7 +371,12 @@ def advection_solver(
     # integrate
     U = ode.integrator(
         f=lambda u: dynamics(
-            u=u, v=v, p=p, h=h, theta_limiting_params=theta_limiting_params
+            u=u,
+            v=v,
+            p=p,
+            h=h,
+            limit_slopes=limit_slopes,
+            theta_limiting_params=theta_limiting_params,
         ),
         step=step_options[forward],
         u_init=u_init,
