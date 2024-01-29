@@ -1,4 +1,7 @@
 models/*
+profiling/*
+**/*.out
+**/*.slurm
 **/__pycache__/
 **/.ipynb_checkpoints/
 *.egg-info/

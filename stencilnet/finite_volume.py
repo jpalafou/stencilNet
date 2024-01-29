@@ -281,11 +281,10 @@ def compute_theta(u: jnp.ndarray, params) -> jnp.ndarray:
     """
     kernel_side_length = int(onp.sqrt(params[0][0].shape[1]))
     kernel_shape = (kernel_side_length, kernel_side_length)
-    theta = jnn.sigmoid(
-        apply_mlp_to_kernels(
-            params, apply_bc(u, kernel_side_length // 2 + 1, expand=True), kernel_shape
-        )
+    theta = apply_mlp_to_kernels(
+        params, apply_bc(u, kernel_side_length // 2 + 1, expand=True), kernel_shape
     )
+    # theta = jnn.hard_sigmoid(theta)
     theta_x = jnp.maximum(theta[1:-1, 1:], theta[1:-1, :-1])
     theta_y = jnp.maximum(theta[1:, 1:-1], theta[:-1, 1:-1])
     return theta_x, theta_y

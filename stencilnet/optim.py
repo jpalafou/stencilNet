@@ -34,6 +34,7 @@ def symmetry_regularization(params: Params_List) -> float:
     return loss
 
 
+@jit
 def update_params(params: Params_List, grads: Params_List, lr: float) -> Params_List:
     """
     args:
